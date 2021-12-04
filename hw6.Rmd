@@ -9,6 +9,8 @@ output: github_document
 library(tidyverse)
 library(modelr)
 library(mgcv)
+library(broom)
+library(dbplyr)
 ```
 
 
@@ -23,7 +25,6 @@ birthweight =
          frace = as.factor(frace),
          malform = as.factor(malform),
          mrace = as.factor(mrace))
-birthweight
 sum(is.na(birthweight))
 ```
 
@@ -34,23 +35,80 @@ There is no missing value in this dataset.
 
 ```{r}
 birthweight_model = 
-  lm(bwt ~ babysex + bhead + blength + delwt + fincome + frace + gaweeks + malform + menarche + mheight + momage + mrace + parity + pnumlbw + pnumsga + ppbmi + ppwt + smoken + wtgain, data = birthweight) %>% 
-  broom::tidy() %>% 
+  lm(bwt ~ babysex + bhead + blength + delwt + fincome + frace + gaweeks + malform + menarche + mheight + momage + mrace + parity + pnumlbw + pnumsga + ppbmi + ppwt + smoken + wtgain, data = birthweight) 
+broom::tidy(birthweight_model) %>% 
   knitr::kable(digits = 3)
-birthweight_model
 ```
 ### Describe my modeling process
 
 I hypothesized all variables (besides bwt) to be predictors of this regression model. Then, I found that there are three predictors which give NA value, which are pnumlbw, pnumsga, and wtgain. Hence, I will not chose them as predictors.
+
+Besides, I also found that p-value for fincome, frace, malform, menarche, mheight, momage, mrace(3&4), ppbmi and ppwt are greater than 0.05, and in this case we failed to reject the null hypothesis. Hence, I will also ombit these as predictors.
+
+```{r}
+better_model =
+  lm(bwt ~ babysex + bhead + blength + delwt + gaweeks + mrace + parity + smoken, data = birthweight)
+broom::tidy(better_model) %>% 
+  knitr::kable(digits = 3)
+```
+
 
 
 ### Show a plot of model residuals against fitted values
 
 ```{r}
 birthweight %>% 
-  modelr::add_predictions(birthweight_model) %>% 
-  modelr::add_residuals(birthweight_model) 
-birthweight
+  modelr::add_predictions(better_model) %>% 
+  modelr::add_residuals(better_model) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point(alpha = .3) + 
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(
+    x = "Predicted values",
+    y = "Residuals",
+    title = "Residuals VS Predictions",
+    caption = "data from p8105 website"
+  )
+```
+
+### Compare my model to two others
+
+```{r}
+first_model = lm(bwt ~ blength + gaweeks, data = birthweight)
+second_model = lm(bwt ~ bhead * blength * babysex, data = birthweight)
+```
+
+```{r}
+cv_df =
+  crossv_mc(birthweight, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+cv_df = 
+  cv_df %>% 
+  mutate(
+    better_model = map(train, ~lm(bwt ~ babysex + bhead + blength + delwt + gaweeks + mrace + parity + smoken, data = .x)),
+    first_model = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+    second_model = map(train, ~gam(bwt ~ bhead * blength * babysex, data = as_tibble(.x)))) %>% 
+  mutate(
+    rmse_better_model = map2_dbl(better_model, test, ~rmse(model = .x, data = .y)),
+    rmse_first_model = map2_dbl(first_model, test, ~rmse(model = .x, data = .y)),
+    rmse_second_model = map2_dbl(second_model, test, ~rmse(model = .x, data = .y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin() +
+  labs(
+    title = "Comparison in terms of the cross-validated prediction error",
+    caption = "data from p8105 website"
+  )
 ```
 
 
