@@ -1,0 +1,56 @@
+---
+title: "HW6"
+author: "Weize Sun"
+date: "12/4/2021"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(mgcv)
+```
+
+
+## Problem 1
+
+### load and clean data
+```{r}
+birthweight = 
+  read.csv("./data/birthweight.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate(babysex = as.factor(babysex),
+         frace = as.factor(frace),
+         malform = as.factor(malform),
+         mrace = as.factor(mrace))
+birthweight
+sum(is.na(birthweight))
+```
+
+There is no missing value in this dataset.
+
+
+### Propose a regression model for birthweight
+
+```{r}
+birthweight_model = 
+  lm(bwt ~ babysex + bhead + blength + delwt + fincome + frace + gaweeks + malform + menarche + mheight + momage + mrace + parity + pnumlbw + pnumsga + ppbmi + ppwt + smoken + wtgain, data = birthweight) %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+birthweight_model
+```
+### Describe my modeling process
+
+I hypothesized all variables (besides bwt) to be predictors of this regression model. Then, I found that there are three predictors which give NA value, which are pnumlbw, pnumsga, and wtgain. Hence, I will not chose them as predictors.
+
+
+### Show a plot of model residuals against fitted values
+
+```{r}
+birthweight %>% 
+  modelr::add_predictions(birthweight_model) %>% 
+  modelr::add_residuals(birthweight_model) 
+birthweight
+```
+
+
