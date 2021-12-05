@@ -112,3 +112,87 @@ cv_df %>%
 ```
 
 
+## Problem 2
+
+### Download data
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+### Set bootstraps samples
+
+```{r}
+bootstraps = 
+  weather_df %>% 
+  modelr::bootstrap(n = 1000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results)
+
+ bootstraps %>% 
+  group_by(term) %>% 
+  summarize(boot_se = sd(estimate)) %>% 
+  knitr::kable(digits = 3)
+```
+
+### Log function
+
+```{r}
+bootstraps_log = 
+  bootstraps %>% 
+  select(.id, term, estimate) %>% 
+  pivot_wider(
+    names_from = "term",
+    values_from = "estimate"
+    ) %>% 
+  rename(intercept = "(Intercept)") %>% 
+  mutate(log_estimate = log(intercept*tmin))
+
+summarise(bootstraps_log,
+    lower_quantile = quantile(log_estimate, c(.025)), 
+    upper_quantile = quantile(log_estimate, c(.975))
+    ) %>% 
+  knitr::kable(digits = 3) 
+
+ggplot(bootstraps_log, aes(x = log_estimate)) +
+  geom_density() +
+  labs(title = "Distribution of Log estimates",
+       caption = "data from 2017 Central Park weather data")
+```
+
+### R square function
+
+```{r}
+bootstraps_r = 
+  weather_df %>% 
+  modelr::bootstrap(n = 1000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results)
+
+summarize(bootstraps_r,
+    ci_lower = quantile(r.squared, 0.025), 
+    ci_upper = quantile(r.squared, 0.975))
+
+ggplot(bootstraps_r, aes(x = r.squared)) + 
+  geom_density() +
+  labs(title = "Distribution of r.squared estimates",
+       caption = "data from 2017 Central Park weather data")
+```
+
+

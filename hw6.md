@@ -212,3 +212,118 @@ cv_df %>%
 ```
 
 ![](hw6_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+## Problem 2
+
+### Download data
+
+``` r
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+    ## Registered S3 method overwritten by 'hoardr':
+    ##   method           from
+    ##   print.cache_info httr
+
+    ## using cached file: ~/Library/Caches/R/noaa_ghcnd/USW00094728.dly
+
+    ## date created (size, mb): 2021-10-13 00:39:32 (7.604)
+
+    ## file min/max dates: 1869-01-01 / 2021-10-31
+
+### Set bootstraps samples
+
+``` r
+bootstraps = 
+  weather_df %>% 
+  modelr::bootstrap(n = 1000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results)
+
+ bootstraps %>% 
+  group_by(term) %>% 
+  summarize(boot_se = sd(estimate)) %>% 
+  knitr::kable(digits = 3)
+```
+
+| term        | boot\_se |
+|:------------|---------:|
+| (Intercept) |    0.258 |
+| tmin        |    0.018 |
+
+### Log function
+
+``` r
+bootstraps_log = 
+  bootstraps %>% 
+  select(.id, term, estimate) %>% 
+  pivot_wider(
+    names_from = "term",
+    values_from = "estimate"
+    ) %>% 
+  rename(intercept = "(Intercept)") %>% 
+  mutate(log_estimate = log(intercept*tmin))
+
+summarise(bootstraps_log,
+    lower_quantile = quantile(log_estimate, c(.025)), 
+    upper_quantile = quantile(log_estimate, c(.975))
+    ) %>% 
+  knitr::kable(digits = 3) 
+```
+
+| lower\_quantile | upper\_quantile |
+|----------------:|----------------:|
+|           1.966 |           2.061 |
+
+``` r
+ggplot(bootstraps_log, aes(x = log_estimate)) +
+  geom_density() +
+  labs(title = "Distribution of Log estimates",
+       caption = "data from 2017 Central Park weather data")
+```
+
+![](hw6_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+### R square function
+
+``` r
+bootstraps_r = 
+  weather_df %>% 
+  modelr::bootstrap(n = 1000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results)
+
+summarize(bootstraps_r,
+    ci_lower = quantile(r.squared, 0.025), 
+    ci_upper = quantile(r.squared, 0.975))
+```
+
+    ## # A tibble: 1 × 2
+    ##   ci_lower ci_upper
+    ##      <dbl>    <dbl>
+    ## 1    0.894    0.927
+
+``` r
+ggplot(bootstraps_r, aes(x = r.squared)) + 
+  geom_density() +
+  labs(title = "Distribution of r.squared estimates",
+       caption = "data from 2017 Central Park weather data")
+```
+
+![](hw6_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
